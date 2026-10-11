@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>フォルダープレイヤー</title>
+<meta name="description" content="フォルダー内の音声ファイルを連続再生するプレイヤー">
+<meta name="theme-color" content="#0B0D12">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="プレイヤー">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+  :root{
+    --bg:#F4F5F8;
+    --surface:#FFFFFF;
+    --surface2:#E7E9EF;
+    --accent:#3E6FFF;
+    --accent-soft:rgba(62,111,255,0.12);
+    --text:#14171F;
+    --text-dim:#6B7280;
+    --border:rgba(20,23,31,0.09);
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0B0D12; --surface:#151822; --surface2:#1D212C; --accent:#5B8CFF;
+      --accent-soft:rgba(91,140,255,0.15);
+      --text:#F2F4F8; --text-dim:#8B93A7; --border:rgba(255,255,255,0.08);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0B0D12; --surface:#151822; --surface2:#1D212C; --accent:#5B8CFF;
+    --accent-soft:rgba(91,140,255,0.15);
+    --text:#F2F4F8; --text-dim:#8B93A7; --border:rgba(255,255,255,0.08);
+  }
+  :root[data-theme="light"]{
+    --bg:#F4F5F8; --surface:#FFFFFF; --surface2:#E7E9EF; --accent:#3E6FFF;
+    --accent-soft:rgba(62,111,255,0.12);
+    --text:#14171F; --text-dim:#6B7280; --border:rgba(20,23,31,0.09);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  html{scroll-padding-top:env(safe-area-inset-top,0px);}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    overflow:hidden;
+  }
+  header{
+    padding:16px 20px 12px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    border-bottom:1px solid var(--border);
+    flex-shrink:0;
+  }
+  header h1{
+    font-size:15px;
+    font-weight:600;
+    letter-spacing:0.2px;
+    margin:0;
+    color:var(--text-dim);
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    max-width:60%;
+  }
+  #folderBtn{
+    background:var(--accent-soft);
+    color:var(--accent);
+    border:none;
+    padding:9px 16px;
+    border-radius:20px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  #folderBtn:active{ filter:brightness(1.2); }
+
+  main{
+    flex:1;
+    min-height:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:16px 20px;
+    gap:14px;
+    overflow-y:auto;
+  }
+  .art{
+    width:min(40vw,150px);
+    height:min(40vw,150px);
+    border-radius:50%;
+    background:conic-gradient(from 180deg, var(--surface2), var(--accent-soft), var(--surface2));
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 20px 50px -20px rgba(0,0,0,0.6);
+    position:relative;
+    flex-shrink:0;
+  }
+  .art::before{
+    content:"";
+    position:absolute;
+    width:28%;
+    height:28%;
+    border-radius:50%;
+    background:var(--bg);
+    border:1px solid var(--border);
+  }
+  .art.spin{ animation:spin 8s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .meta{ text-align:center; max-width:88vw; }
+  .meta h2{
+    font-size:17px;
+    font-weight:600;
+    margin:0 0 4px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .meta p{
+    margin:0;
+    font-size:13px;
+    color:var(--text-dim);
+  }
+
+  .progress-wrap{
+    width:100%;
+    max-width:360px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  #seek{
+    -webkit-appearance:none;
+    appearance:none;
+    width:100%;
+    height:4px;
+    border-radius:2px;
+    background:var(--surface2);
+    outline:none;
+  }
+  #seek::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    width:13px;height:13px;border-radius:50%;
+    background:var(--accent);
+    cursor:pointer;
+  }
+  .times{
+    display:flex;
+    justify-content:space-between;
+    font-size:11px;
+    color:var(--text-dim);
+    font-variant-numeric:tabular-nums;
+  }
+
+  .controls{
+    display:flex;
+    align-items:center;
+    gap:28px;
+  }
+  .controls button{
+    background:none;
+    border:none;
+    color:var(--text);
+    cursor:pointer;
+    padding:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  #playBtn{
+    width:64px;height:64px;
+    border-radius:50%;
+    background:var(--accent);
+    color:#0B0D12;
+  }
+  #playBtn:active{ filter:brightness(1.1); }
+  .side-btn{ width:40px; height:40px; color:var(--text-dim); }
+  .side-btn:active{ color:var(--text); }
+
+  #loading{
+    display:none;
+    width:100%;
+    max-width:300px;
+    text-align:center;
+  }
+  #loading .msg{ font-size:15px; font-weight:600; margin-bottom:12px; }
+  #loading .bar{ height:6px; border-radius:3px; background:var(--surface2); overflow:hidden; }
+  #loading .fill{ height:100%; width:0%; background:var(--accent); border-radius:3px; transition:width .15s; }
+  #loading .cnt{ margin-top:10px; font-size:12px; color:var(--text-dim); font-variant-numeric:tabular-nums; }
+  #playlist li{ display:flex; justify-content:space-between; gap:12px; }
+  #playlist li .n{ overflow:hidden; text-overflow:ellipsis; }
+  #playlist li .t{ flex-shrink:0; font-size:12px; font-variant-numeric:tabular-nums; opacity:.8; }
+
+  #empty{
+    text-align:center;
+    color:var(--text-dim);
+    font-size:14px;
+    line-height:1.7;
+    max-width:280px;
+  }
+
+  #playlist{
+    flex-shrink:0;
+    max-height:min(180px,22vh);
+    overflow-y:auto;
+    border-top:1px solid var(--border);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  #playlist ul{ list-style:none; margin:0; padding:6px 0; }
+  #playlist li{
+    padding:11px 20px;
+    font-size:13.5px;
+    color:var(--text-dim);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    cursor:pointer;
+  }
+  #playlist li.active{ color:var(--accent); font-weight:600; background:var(--accent-soft); }
+  #playlist li:active{ background:var(--surface2); }
+  #playlist::-webkit-scrollbar{ width:4px; }
+  #playlist::-webkit-scrollbar-thumb{ background:var(--surface2); border-radius:2px; }
+
+  #fileInput{ display:none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="folderName">フォルダー未選択</h1>
+  <div style="display:flex; align-items:center; gap:10px;">
+    <button id="themeBtn" aria-label="テーマ切り替え" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:6px;display:flex;">
+      <svg id="themeIcon" width="19" height="19" viewBox="0 0 24 24" fill="currentColor"></svg>
+    </button>
+    <button id="folderBtn">フォルダーを選択</button>
+  </div>
+</header>
+
+<main>
+  <div id="playerView" style="display:none; width:100%; align-items:center; flex-direction:column; gap:14px;">
+    <div class="art" id="art"></div>
+    <div class="meta">
+      <h2 id="trackTitle">—</h2>
+      <p id="trackIndex">—</p>
+    </div>
+    <div class="progress-wrap">
+      <input type="range" id="seek" min="0" max="100" value="0">
+      <div class="times"><span id="curTime">0:00</span><span id="durTime">0:00</span></div>
+    </div>
+    <div class="controls">
+      <button class="side-btn" id="prevBtn" aria-label="前へ">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+      </button>
+      <button id="playBtn" aria-label="再生">
+        <svg id="playIcon" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <button class="side-btn" id="nextBtn" aria-label="次へ">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 6l8.5 6L6 18z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="loading">
+    <div class="msg">読み込み中…</div>
+    <div class="bar"><div class="fill" id="loadFill"></div></div>
+    <div class="cnt" id="loadCnt">0 / 0</div>
+  </div>
+
+  <div id="empty">
+    右上の「フォルダーを選択」をタップして、音声ファイルが入ったフォルダーを選んでください。対応形式: mp3 / wav / m4a / ogg / flac / aac
+  </div>
+</main>
+
+<div id="playlist" style="display:none;"><ul id="trackList"></ul></div>
+
+<input type="file" id="fileInput" webkitdirectory directory multiple>
+
+<audio id="audio"></audio>
+
+<script>
+(function(){
+  const themeBtn = document.getElementById('themeBtn');
+  const themeIcon = document.getElementById('themeIcon');
+  const SUN = '<path d="M12 4V2M12 22v-2M4 12H2m20 0h-2M5.6 5.6 4.2 4.2m15.6 15.6-1.4-1.4M5.6 18.4 4.2 19.8M19.8 4.2l-1.4 1.4M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>';
+  const MOON = '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z"/>';
+
+  function applyTheme(mode){
+    // mode: 'light' | 'dark'
+    document.documentElement.setAttribute('data-theme', mode);
+    themeIcon.innerHTML = mode === 'dark' ? SUN : MOON;
+    try{ localStorage.setItem('player-theme', mode); }catch(e){}
+  }
+
+  function initTheme(){
+    let saved = null;
+    try{ saved = localStorage.getItem('player-theme'); }catch(e){}
+    if(saved === 'light' || saved === 'dark'){
+      applyTheme(saved);
+    } else {
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      applyTheme(prefersDark ? 'dark' : 'light');
+    }
+  }
+
+  themeBtn.addEventListener('click', ()=>{
+    const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    applyTheme(current === 'dark' ? 'light' : 'dark');
+  });
+
+  initTheme();
+
+  const fileInput = document.getElementById('fileInput');
+  const folderBtn = document.getElementById('folderBtn');
+  const folderName = document.getElementById('folderName');
+  const empty = document.getElementById('empty');
+  const playerView = document.getElementById('playerView');
+  const playlistEl = document.getElementById('playlist');
+  const trackList = document.getElementById('trackList');
+  const audio = document.getElementById('audio');
+  const playBtn = document.getElementById('playBtn');
+  const playIcon = document.getElementById('playIcon');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const trackTitle = document.getElementById('trackTitle');
+  const trackIndex = document.getElementById('trackIndex');
+  const art = document.getElementById('art');
+  const seek = document.getElementById('seek');
+  const curTime = document.getElementById('curTime');
+  const durTime = document.getElementById('durTime');
+
+  const AUDIO_EXT = /\.(mp3|wav|m4a|ogg|flac|aac)$/i;
+  let files = [];
+  let currentIndex = -1;
+  let objectUrl = null;
+
+  const ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
+  const ICON_PAUSE = '<path d="M6 5h4v14H6zm8 0h4v14h-4z"/>';
+
+  function fmtTime(sec){
+    if(!isFinite(sec)) return '0:00';
+    const m = Math.floor(sec/60);
+    const s = Math.floor(sec%60).toString().padStart(2,'0');
+    return m+':'+s;
+  }
+
+  function naturalSort(a,b){
+    return a.name.localeCompare(b.name, 'ja', {numeric:true, sensitivity:'base'});
+  }
+
+  folderBtn.addEventListener('click', ()=> fileInput.click());
+
+  const loading = document.getElementById('loading');
+  const loadFill = document.getElementById('loadFill');
+  const loadCnt = document.getElementById('loadCnt');
+  let durations = [];
+
+  function getDuration(file){
+    return new Promise(res=>{
+      const a = new Audio();
+      a.preload = 'metadata';
+      const url = URL.createObjectURL(file);
+      let done = false;
+      const fin = v=>{
+        if(done) return;
+        done = true; clearTimeout(t);
+        a.removeAttribute('src'); URL.revokeObjectURL(url);
+        res(v);
+      };
+      const t = setTimeout(()=>fin(null), 4000);
+      a.onloadedmetadata = ()=> fin(isFinite(a.duration) ? a.duration : null);
+      a.onerror = ()=> fin(null);
+      a.src = url;
+    });
+  }
+
+  async function scanDurations(list){
+    const out = new Array(list.length).fill(null);
+    let next = 0, done = 0;
+    async function worker(){
+      while(next < list.length){
+        const i = next++;
+        out[i] = await getDuration(list[i]);
+        done++;
+        loadFill.style.width = (done / list.length * 100) + '%';
+        loadCnt.textContent = done + ' / ' + list.length;
+      }
+    }
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    return out;
+  }
+
+  fileInput.addEventListener('change', async (e)=>{
+    const all = Array.from(e.target.files || []);
+    const list = all.filter(f => AUDIO_EXT.test(f.name)).sort(naturalSort);
+    if(list.length === 0){
+      files = [];
+      folderName.textContent = 'フォルダー未選択';
+      empty.textContent = '音声ファイルが見つかりませんでした。別のフォルダーを選んでください。';
+      empty.style.display = 'block';
+      playerView.style.display = 'none';
+      playlistEl.style.display = 'none';
+      return;
+    }
+
+    // 読み込み中表示
+    audio.pause();
+    empty.style.display = 'none';
+    playerView.style.display = 'none';
+    playlistEl.style.display = 'none';
+    loadFill.style.width = '0%';
+    loadCnt.textContent = '0 / ' + list.length;
+    loading.style.display = 'block';
+    folderBtn.disabled = true;
+    folderBtn.style.opacity = '.5';
+    folderName.textContent = '読み込み中…';
+
+    const result = await scanDurations(list);
+
+    files = list;
+    durations = result;
+    const firstPath = files[0].webkitRelativePath || '';
+    const folder = firstPath.split('/')[0] || '選択済みフォルダー';
+    folderName.textContent = folder + '(' + files.length + '曲)';
+
+    loading.style.display = 'none';
+    folderBtn.disabled = false;
+    folderBtn.style.opacity = '';
+    playerView.style.display = 'flex';
+    playlistEl.style.display = 'block';
+
+    renderPlaylist();
+    loadTrack(0, false);
+    fileInput.value = '';
+  });
+
+  function renderPlaylist(){
+    trackList.innerHTML = '';
+    files.forEach((f, i)=>{
+      const li = document.createElement('li');
+      const n = document.createElement('span');
+      n.className = 'n';
+      n.textContent = f.name.replace(AUDIO_EXT,'');
+      const t = document.createElement('span');
+      t.className = 't';
+      t.textContent = durations[i] != null ? fmtTime(durations[i]) : '';
+      li.appendChild(n); li.appendChild(t);
+      li.dataset.index = i;
+      li.addEventListener('click', ()=> loadTrack(i, true));
+      trackList.appendChild(li);
+    });
+  }
+
+  function highlightPlaylist(){
+    Array.from(trackList.children).forEach((li, i)=>{
+      li.classList.toggle('active', i === currentIndex);
+    });
+    const activeLi = trackList.children[currentIndex];
+    if(activeLi) activeLi.scrollIntoView({block:'nearest'});
+  }
+
+  function loadTrack(i, autoplay){
+    if(i < 0 || i >= files.length) return;
+    currentIndex = i;
+    const file = files[i];
+    if(objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = URL.createObjectURL(file);
+    audio.src = objectUrl;
+    trackTitle.textContent = file.name.replace(AUDIO_EXT,'');
+    trackIndex.textContent = (i+1) + ' / ' + files.length;
+    highlightPlaylist();
+    if(autoplay){
+      audio.play().catch(()=>{});
+    }
+  }
+
+  playBtn.addEventListener('click', ()=>{
+    if(currentIndex === -1) return;
+    if(audio.paused) audio.play().catch(()=>{});
+    else audio.pause();
+  });
+
+  audio.addEventListener('play', ()=>{
+    playIcon.innerHTML = ICON_PAUSE;
+    art.classList.add('spin');
+  });
+  audio.addEventListener('pause', ()=>{
+    playIcon.innerHTML = ICON_PLAY;
+    art.classList.remove('spin');
+  });
+
+  prevBtn.addEventListener('click', ()=>{
+    if(currentIndex === -1) return;
+    if(audio.currentTime > 3){
+      audio.currentTime = 0;
+    } else {
+      const prev = (currentIndex - 1 + files.length) % files.length;
+      loadTrack(prev, true);
+    }
+  });
+
+  nextBtn.addEventListener('click', ()=>{
+    if(currentIndex === -1) return;
+    const next = (currentIndex + 1) % files.length;
+    loadTrack(next, true);
+  });
+
+  audio.addEventListener('ended', ()=>{
+    if(currentIndex + 1 < files.length){
+      loadTrack(currentIndex + 1, true);
+    }
+  });
+
+  audio.addEventListener('timeupdate', ()=>{
+    if(!isFinite(audio.duration)) return;
+    seek.value = (audio.currentTime / audio.duration) * 100 || 0;
+    curTime.textContent = fmtTime(audio.currentTime);
+    durTime.textContent = fmtTime(audio.duration);
+  });
+
+  seek.addEventListener('input', ()=>{
+    if(!isFinite(audio.duration)) return;
+    audio.currentTime = (seek.value / 100) * audio.duration;
+  });
+})();
+</script>
+
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  });
+}
+</script>
+
+</body>
+</html>
